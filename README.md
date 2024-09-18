@@ -1,0 +1,4 @@
+The game is "v13usable.html", so called because it was the 13th iteration and because I bookmarked a few of the more playable/usable iterations throughout the process.
+
+Controls: WASD to move, K to use the sword, L to use the shield.
+Make sure to collect the chests above you at the beginning, they're where the sword and shield are. Also, the shield only works for projectiles.
