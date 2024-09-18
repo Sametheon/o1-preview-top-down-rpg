@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Enhanced 2D RPG with Coins and Score</title>
+    <style>
+        canvas {
+            background-color: #000;
+            display: block;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <script>
+        // Get the canvas and context
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Define world dimensions
+        const worldWidth = 4000;
+        const worldHeight = 600;
+
+        // Player object
+        const player = {
+            x: 50,
+            y: 550,
+            width: 20,
+            height: 20,
+            speed: 2,
+            hasSword: false,
+            hasShield: false,
+            direction: 'right',
+            alive: true,
+            shielding: false
+        };
+
+        // Camera object
+        const camera = {
+            x: 0,
+            y: 0,
+            width: canvas.width,
+            height: canvas.height,
+            leftBoundary: canvas.width / 4,
+            rightBoundary: canvas.width - canvas.width / 4,
+            topBoundary: canvas.height / 4,
+            bottomBoundary: canvas.height - canvas.height / 4
+        };
+
+        // Key press tracking
+        const keys = {
+            w: false,
+            a: false,
+            s: false,
+            d: false,
+            k: false,
+            l: false
+        };
+
+        // Attack variables
+        let attacking = false;
+        let attackTimer = 0;
+
+        // Score
+        let score = 0;
+
+        // Chest objects
+        const swordChest = {
+            x: 50,
+            y: 500,
+            width: 30,
+            height: 20,
+            isOpen: false
+        };
+
+        const shieldChest = {
+            x: 100,
+            y: 500,
+            width: 30,
+            height: 20,
+            isOpen: false
+        };
+
+        // Rooms and enemies
+        const rooms = [];
+        let currentRoom = -1; // -1 indicates the outdoor area
+        let gameOver = false; // Added to track game over state
+
+        // Projectiles (for ranged enemies and boss)
+        const projectiles = [];
+
+        // Initialize rooms
+        function createRooms() {
+            // Outdoor area is at x: 0 to x: 400
+            // Dungeon entrance at x: 400
+
+            // Room 1
+            rooms.push({
+                x: 400,
+                y: 0,
+                width: 800,
+                height: 600,
+                obstacles: [
+                    // Left vertical obstacle with an opening
+                    { x: 600, y: 0, width: 20, height: 200 },
+                    { x: 600, y: 300, width: 20, height: 300 },
+                    // Top horizontal obstacle
+                    { x: 620, y: 200, width: 160, height: 20 },
+                    // Right vertical obstacle with an opening
+                    { x: 780, y: 0, width: 20, height: 150 },
+                    { x: 780, y: 250, width: 20, height: 350 },
+                    // Bottom horizontal obstacle
+                    { x: 620, y: 380, width: 160, height: 20 }
+                ],
+                enemies: [
+                    {
+                        x: 650,
+                        y: 150,
+                        width: 20,
+                        height: 20,
+                        alive: true,
+                        type: 'fast',
+                        speed: 2
+                    },
+                    {
+                        x: 750,
+                        y: 300,
+                        width: 20,
+                        height: 20,
+                        alive: true,
+                        type: 'basic',
+                        speed: 1
+                    }
+                ],
+                coin: { x: 700, y: 250, width: 10, height: 10, collected: false },
+                exit: { x: 800, y: 50, width: 50, height: 50 }
+            });
+
+            // Adjusted Room 2
+            rooms.push({
+                x: 1200,
+                y: 0,
+                width: 800,
+                height: 600,
+                obstacles: [
+                    { x: 1200, y: 0, width: 800, height: 20 }, // Top wall
+                    // Left vertical obstacle with opening
+                    { x: 1400, y: 20, width: 20, height: 180 },
+                    { x: 1400, y: 280, width: 20, height: 320 },
+                    // Middle vertical obstacle with opening
+                    { x: 1600, y: 20, width: 20, height: 180 },
+                    { x: 1600, y: 280, width: 20, height: 320 },
+                    // Right vertical obstacle with opening
+                    { x: 1800, y: 0, width: 20, height: 600 },
+                    // Horizontal obstacle connecting left and middle obstacles
+                    { x: 1420, y: 200, width: 180, height: 20 },
+                    // Horizontal obstacle connecting middle and right obstacles
+                    { x: 1620, y: 380, width: 180, height: 20 },
+                    // Bottom wall
+                    { x: 1200, y: 580, width: 800, height: 20 }
+                ],
+                enemies: [
+                    {
+                        x: 1250,
+                        y: 50,
+                        width: 20,
+                        height: 20,
+                        alive: true,
+                        type: 'ranged',
+                        speed: 1,
+                        attackCooldown: 120
+                    },
+                    {
+                        x: 1550,
+                        y: 250,
+                        width: 20,
+                        height: 20,
+                        alive: true,
+                        type: 'fast',
+                        speed: 2
+                    },
+                    {
+                        x: 1750,
+                        y: 450,
+                        width: 20,
+                        height: 20,
+                        alive: true,
+                        type: 'basic',
+                        speed: 1
+                    }
+                ],
+                coin: { x: 1700, y: 550, width: 10, height: 10, collected: false },
+                exit: { x: 1780, y: 50, width: 50, height: 50 } // Exit at top-right
+            });
+
+            // Room 3
+            rooms.push({
+                x: 2000,
+                y: 0,
+                width: 800,
+                height: 600,
+                obstacles: [
+                    { x: 2000, y: 200, width: 800, height: 20 },
+                    { x: 2200, y: 20, width: 20, height: 200 },
+                    { x: 2400, y: 200, width: 20, height: 400 },
+                    { x: 2200, y: 400, width: 420, height: 20 }
+                ],
+                enemies: [
+                    {
+                        x: 2050,
+                        y: 250,
+                        width: 20,
+                        height: 20,
+                        alive: true,
+                        type: 'ranged',
+                        speed: 1,
+                        attackCooldown: 100
+                    },
+                    {
+                        x: 2350,
+                        y: 450,
+                        width: 20,
+                        height: 20,
+                        alive: true,
+                        type: 'fast',
+                        speed: 2
+                    }
+                ],
+                coin: { x: 2250, y: 350, width: 10, height: 10, collected: false },
+                exit: { x: 2800, y: 300, width: 50, height: 50 }
+            });
+
+            // Room 4
+            rooms.push({
+                x: 2800,
+                y: 0,
+                width: 800,
+                height: 600,
+                obstacles: [
+                    { x: 2800, y: 0, width: 20, height: 600 },
+                    { x: 2800, y: 0, width: 800, height: 20 },
+                    { x: 3580, y: 0, width: 20, height: 600 },
+                    { x: 2800, y: 580, width: 800, height: 20 },
+                    { x: 3000, y: 100, width: 20, height: 400 },
+                    { x: 3200, y: 100, width: 20, height: 400 },
+                    { x: 3400, y: 100, width: 20, height: 400 }
+                ],
+                enemies: [
+                    {
+                        x: 2850,
+                        y: 50,
+                        width: 20,
+                        height: 20,
+                        alive: true,
+                        type: 'fast',
+                        speed: 2.5
+                    },
+                    {
+                        x: 3150,
+                        y: 550,
+                        width: 20,
+                        height: 20,
+                        alive: true,
+                        type: 'ranged',
+                        speed: 1,
+                        attackCooldown: 80
+                    },
+                    {
+                        x: 3450,
+                        y: 50,
+                        width: 20,
+                        height: 20,
+                        alive: true,
+                        type: 'fast',
+                        speed: 2.5
+                    }
+                ],
+                coin: { x: 3300, y: 300, width: 10, height: 10, collected: false },
+                exit: { x: 3200, y: 300, width: 50, height: 50 }
+            });
+
+            // Boss Room
+            rooms.push({
+                x: 3600,
+                y: 0,
+                width: 800,
+                height: 600,
+                obstacles: [],
+                enemies: [
+                    {
+                        x: 3700,
+                        y: 300,
+                        width: 40,
+                        height: 40,
+                        alive: true,
+                        boss: true,
+                        path: [
+                            { x: 3700, y: 100 },
+                            { x: 3700, y: 500 }
+                        ],
+                        pathIndex: 0,
+                        speed: 0.5,
+                        attackCooldown: 80
+                    }
+                ],
+                coin: { x: 3900, y: 300, width: 10, height: 10, collected: false },
+                exit: null
+            });
+        }
+
+        createRooms();
+
+        // Handle keydown events
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'w') {
+                keys.w = true;
+                player.direction = 'up';
+            }
+            if (e.key === 'a') {
+                keys.a = true;
+                player.direction = 'left';
+            }
+            if (e.key === 's') {
+                keys.s = true;
+                player.direction = 'down';
+            }
+            if (e.key === 'd') {
+                keys.d = true;
+                player.direction = 'right';
+            }
+            if (e.key === 'k') {
+                keys.k = true;
+                if (!player.shielding) attack();
+            }
+            if (e.key === 'l') {
+                keys.l = true;
+                player.shielding = player.hasShield;
+            }
+        });
+
+        // Handle keyup events
+        document.addEventListener('keyup', (e) => {
+            if (e.key === 'w') keys.w = false;
+            if (e.key === 'a') keys.a = false;
+            if (e.key === 's') keys.s = false;
+            if (e.key === 'd') keys.d = false;
+            if (e.key === 'k') keys.k = false;
+            if (e.key === 'l') {
+                keys.l = false;
+                player.shielding = false;
+            }
+        });
+
+        // Attack function
+        function attack() {
+            if (!player.hasSword || attacking || player.shielding) return;
+            attacking = true;
+            attackTimer = 10; // Attack effect lasts for 10 frames
+            let room = null;
+            if (currentRoom === -1) {
+                // Outdoor area
+                room = { enemies: [] };
+            } else {
+                room = rooms[currentRoom];
+            }
+            room.enemies.forEach(enemy => {
+                if (enemy.alive && isColliding(attackBox(), enemy)) {
+                    enemy.alive = false;
+                }
+            });
+        }
+
+        // Define the attack box based on player's direction
+        function attackBox() {
+            const size = 40; // Increased from 30 to 40
+            let attackArea = {
+                x: player.x,
+                y: player.y,
+                width: player.width,
+                height: player.height
+            };
+            if (player.direction === 'up') {
+                attackArea.y -= size;
+                attackArea.height = size;
+            } else if (player.direction === 'down') {
+                attackArea.y += player.height;
+                attackArea.height = size;
+            } else if (player.direction === 'left') {
+                attackArea.x -= size;
+                attackArea.width = size;
+            } else if (player.direction === 'right') {
+                attackArea.x += player.width;
+                attackArea.width = size;
+            }
+            return attackArea;
+        }
+
+        // Collision detection
+        function isColliding(a, b, buffer = 0) {
+            return (
+                a.x + a.width + buffer > b.x - buffer &&
+                a.x - buffer < b.x + b.width + buffer &&
+                a.y + a.height + buffer > b.y - buffer &&
+                a.y - buffer < b.y + b.height + buffer
+            );
+        }
+
+        // Update game state
+        function update() {
+            if (gameOver || !player.alive) return; // Stop updating if game over
+
+            // Move player
+            if (keys.w) player.y -= player.speed;
+            if (keys.s) player.y += player.speed;
+            if (keys.a) player.x -= player.speed;
+            if (keys.d) player.x += player.speed;
+
+            // Prevent moving out of world bounds
+            player.x = Math.max(0, Math.min(player.x, worldWidth - player.width));
+            player.y = Math.max(0, Math.min(player.y, worldHeight - player.height));
+
+            // Update camera position to follow the player
+            if (player.x < camera.x + camera.leftBoundary) {
+                camera.x = player.x - camera.leftBoundary;
+            }
+            if (player.x + player.width > camera.x + camera.rightBoundary) {
+                camera.x = player.x + player.width - camera.rightBoundary;
+            }
+            if (player.y < camera.y + camera.topBoundary) {
+                camera.y = player.y - camera.topBoundary;
+            }
+            if (player.y + player.height > camera.y + camera.bottomBoundary) {
+                camera.y = player.y + player.height - camera.bottomBoundary;
+            }
+
+            // Keep camera within world bounds
+            camera.x = Math.max(0, Math.min(camera.x, worldWidth - camera.width));
+            camera.y = Math.max(0, Math.min(camera.y, worldHeight - camera.height));
+
+            // Update attack timer
+            if (attacking) {
+                attackTimer--;
+                if (attackTimer <= 0) {
+                    attacking = false;
+                }
+            }
+
+            if (currentRoom === -1) {
+                // Outdoor area logic
+                if (!swordChest.isOpen && isColliding(player, swordChest)) {
+                    swordChest.isOpen = true;
+                    player.hasSword = true;
+                }
+                if (!shieldChest.isOpen && isColliding(player, shieldChest)) {
+                    shieldChest.isOpen = true;
+                    player.hasShield = true;
+                }
+                // Check if player reaches dungeon entrance
+                if (player.x >= 400) {
+                    currentRoom = 0;
+                    player.x = rooms[currentRoom].x + 50;
+                    player.y = rooms[currentRoom].y + 550;
+                }
+            } else {
+                // Room logic
+                const room = rooms[currentRoom];
+
+                // Collect coin
+                if (room.coin && !room.coin.collected && isColliding(player, room.coin)) {
+                    room.coin.collected = true;
+                    score += 1;
+                }
+
+                // Move enemies
+                room.enemies.forEach(enemy => {
+                    if (enemy.alive) {
+                        if (enemy.type === 'basic' || enemy.type === 'fast') {
+                            // Simple AI: move towards player
+                            const dx = player.x - enemy.x;
+                            const dy = player.y - enemy.y;
+                            const distance = Math.sqrt(dx * dx + dy * dy);
+                            if (distance > 0) {
+                                enemy.x += (dx / distance) * enemy.speed;
+                                enemy.y += (dy / distance) * enemy.speed;
+                            }
+                        }
+
+                        if (enemy.type === 'ranged' || enemy.boss) {
+                            enemy.attackCooldown--;
+                            if (enemy.attackCooldown <= 0) {
+                                enemy.attackCooldown = enemy.boss ? 80 : 120;
+                                fireProjectile(enemy);
+                            }
+                        }
+
+                        // Boss movement
+                        if (enemy.boss && enemy.path) {
+                            const target = enemy.path[enemy.pathIndex];
+                            const dx = target.x - enemy.x;
+                            const dy = target.y - enemy.y;
+                            const distance = Math.sqrt(dx * dx + dy * dy);
+                            if (distance < enemy.speed) {
+                                enemy.x = target.x;
+                                enemy.y = target.y;
+                                enemy.pathIndex = (enemy.pathIndex + 1) % enemy.path.length;
+                            } else {
+                                enemy.x += (dx / distance) * enemy.speed;
+                                enemy.y += (dy / distance) * enemy.speed;
+                            }
+                        }
+                    }
+                });
+
+                // Move projectiles
+                for (let i = projectiles.length - 1; i >= 0; i--) {
+                    const proj = projectiles[i];
+                    proj.x += proj.vx;
+                    proj.y += proj.vy;
+
+                    // Check for collision with player
+                    if (isColliding(proj, player)) {
+                        if (player.shielding) {
+                            // Deflect projectile
+                            projectiles.splice(i, 1);
+                        } else {
+                            player.alive = false;
+                            alert("You have been defeated!");
+                            gameOver = true;
+                            setTimeout(() => {
+                                document.location.reload();
+                            }, 100);
+                        }
+                    }
+
+                    // Remove projectile if out of bounds
+                    if (
+                        proj.x < room.x ||
+                        proj.x > room.x + room.width ||
+                        proj.y < room.y ||
+                        proj.y > room.y + room.height
+                    ) {
+                        projectiles.splice(i, 1);
+                    }
+                }
+
+                // Obstacle collision
+                room.obstacles.forEach(obstacle => {
+                    if (isColliding(player, obstacle)) {
+                        if (keys.w) player.y += player.speed;
+                        if (keys.s) player.y -= player.speed;
+                        if (keys.a) player.x += player.speed;
+                        if (keys.d) player.x -= player.speed;
+                    }
+                });
+
+                // Enemy collision
+                room.enemies.forEach(enemy => {
+                    if (enemy.alive && isColliding(player, enemy)) {
+                        player.alive = false;
+                        alert("You have been defeated!");
+                        gameOver = true;
+                        setTimeout(() => {
+                            document.location.reload();
+                        }, 100);
+                    }
+                });
+
+                // Exit to next room
+                if (room.exit && isColliding(player, room.exit)) {
+                    currentRoom++;
+                    if (currentRoom >= rooms.length) {
+                        alert(`You have completed the game! Your final score is ${score}.`);
+                        gameOver = true;
+                        setTimeout(() => {
+                            document.location.reload();
+                        }, 1000);
+                    } else {
+                        // Position player at the start of the next room
+                        player.x = rooms[currentRoom].x + 50;
+                        player.y = rooms[currentRoom].y + 550;
+                    }
+                }
+            }
+        }
+
+        // Function to fire a projectile from an enemy towards the player
+        function fireProjectile(enemy) {
+            const dx = player.x - enemy.x;
+            const dy = player.y - enemy.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const speed = 3;
+            const vx = (dx / distance) * speed;
+            const vy = (dy / distance) * speed;
+            projectiles.push({
+                x: enemy.x + enemy.width / 2,
+                y: enemy.y + enemy.height / 2,
+                width: 10,
+                height: 10,
+                vx: vx,
+                vy: vy
+            });
+        }
+
+        // Draw game elements
+        function draw() {
+            if (gameOver) return; // Stop drawing if game over
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw outdoor area or rooms
+            if (currentRoom === -1) {
+                // Draw outdoor area
+
+                // Draw sword chest
+                ctx.fillStyle = 'brown';
+                if (!swordChest.isOpen) {
+                    ctx.fillRect(swordChest.x - camera.x, swordChest.y - camera.y, swordChest.width, swordChest.height);
+                } else {
+                    ctx.strokeRect(swordChest.x - camera.x, swordChest.y - camera.y, swordChest.width, swordChest.height);
+                }
+
+                // Draw shield chest
+                ctx.fillStyle = 'brown';
+                if (!shieldChest.isOpen) {
+                    ctx.fillRect(shieldChest.x - camera.x, shieldChest.y - camera.y, shieldChest.width, shieldChest.height);
+                } else {
+                    ctx.strokeRect(shieldChest.x - camera.x, shieldChest.y - camera.y, shieldChest.width, shieldChest.height);
+                }
+
+                // Draw dungeon entrance
+                ctx.fillStyle = '#654321'; // Dark brown color
+                ctx.fillRect(400 - camera.x, 0 - camera.y, 20, worldHeight);
+
+            } else {
+                // Draw current room
+                const room = rooms[currentRoom];
+
+                // Draw obstacles
+                ctx.fillStyle = 'gray';
+                room.obstacles.forEach(obstacle => {
+                    ctx.fillRect(obstacle.x - camera.x, obstacle.y - camera.y, obstacle.width, obstacle.height);
+                });
+
+                // Draw enemies
+                room.enemies.forEach(enemy => {
+                    if (enemy.alive) {
+                        if (enemy.type === 'ranged' || enemy.boss) {
+                            ctx.fillStyle = 'purple';
+                        } else if (enemy.type === 'fast') {
+                            ctx.fillStyle = 'orange';
+                        } else {
+                            ctx.fillStyle = 'red';
+                        }
+                        ctx.fillRect(enemy.x - camera.x, enemy.y - camera.y, enemy.width, enemy.height);
+                    }
+                });
+
+                // Draw coin
+                if (room.coin && !room.coin.collected) {
+                    ctx.fillStyle = 'gold';
+                    ctx.fillRect(room.coin.x - camera.x, room.coin.y - camera.y, room.coin.width, room.coin.height);
+                }
+
+                // Draw projectiles
+                ctx.fillStyle = 'yellow';
+                projectiles.forEach(proj => {
+                    ctx.fillRect(proj.x - camera.x, proj.y - camera.y, proj.width, proj.height);
+                });
+
+                // Draw exit
+                if (room.exit) {
+                    ctx.fillStyle = 'green';
+                    ctx.fillRect(room.exit.x - camera.x, room.exit.y - camera.y, room.exit.width, room.exit.height);
+                }
+            }
+
+            // Draw player
+            if (player.alive) {
+                ctx.fillStyle = player.hasSword ? 'blue' : 'green';
+                ctx.fillRect(player.x - camera.x, player.y - camera.y, player.width, player.height);
+
+                // Draw shield
+                if (player.shielding) {
+                    ctx.fillStyle = 'cyan';
+                    const shieldSize = 15; // Reduced from 25 to 15
+                    ctx.beginPath();
+                    if (player.direction === 'up') {
+                        ctx.rect(player.x - camera.x, player.y - camera.y - shieldSize, player.width, shieldSize);
+                    } else if (player.direction === 'down') {
+                        ctx.rect(player.x - camera.x, player.y - camera.y + player.height, player.width, shieldSize);
+                    } else if (player.direction === 'left') {
+                        ctx.rect(player.x - camera.x - shieldSize, player.y - camera.y, shieldSize, player.height);
+                    } else if (player.direction === 'right') {
+                        ctx.rect(player.x - camera.x + player.width, player.y - camera.y, shieldSize, player.height);
+                    }
+                    ctx.fill();
+                }
+
+                // Draw attack effect
+                if (attacking) {
+                    ctx.fillStyle = 'white';
+                    const attackArea = attackBox();
+                    ctx.fillRect(attackArea.x - camera.x, attackArea.y - camera.y, attackArea.width, attackArea.height);
+                }
+            }
+
+            // Draw score
+            ctx.fillStyle = 'white';
+            ctx.font = '20px Arial';
+            ctx.fillText(`Score: ${score}`, canvas.width - 100, 30);
+        }
+
+        // Main game loop
+        function gameLoop() {
+            update();
+            draw();
+            if (!gameOver) {
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        gameLoop();
+    </script>
+</body>
+</html>
